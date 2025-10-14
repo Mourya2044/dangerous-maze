@@ -13,23 +13,34 @@
 
 void MainWindow::drawMaze()
 {
+    coinItems.clear();
+
     for (int i = 0; i < ROWS; ++i) {
         for (int j = 0; j < COLS; ++j) {
             int x = j * gridStep + offsetX;
             int y = i * gridStep + offsetY;
 
-            if (maze[i][j] == 1)
+            if (maze[i][j] == 1) {
                 scene->addRect(x, y, gridStep, gridStep, QPen(Qt::gray), QBrush(Qt::darkGray));
-            else
+            }
+            else if (maze[i][j] == 2) {
+                // coin
+                QGraphicsRectItem *coin = scene->addRect(x + gridStep/4, y + gridStep/4, gridStep/2, gridStep/2,
+                                                         QPen(Qt::yellow), QBrush(Qt::yellow));
+                coinItems[{i, j}] = coin;
+            }
+            else {
                 scene->addRect(x, y, gridStep, gridStep, QPen(Qt::lightGray));
+            }
         }
     }
-    // Draw start and end markers
-    scene->addRect(offsetX + 1 * gridStep,offsetY + 1 * gridStep, gridStep, gridStep, QPen(Qt::green), QBrush(Qt::green)); // Start
-    scene->addRect(offsetX + (COLS - 2) * gridStep,offsetY + (ROWS - 2) * gridStep, gridStep, gridStep, QPen(Qt::blue), QBrush(Qt::blue)); // Goal
 
+    // Start and end markers
+    scene->addRect(offsetX + 1 * gridStep, offsetY + 1 * gridStep, gridStep, gridStep, QPen(Qt::green), QBrush(Qt::green));
+    scene->addRect(offsetX + (COLS - 2) * gridStep, offsetY + (ROWS - 2) * gridStep, gridStep, gridStep, QPen(Qt::blue), QBrush(Qt::blue));
     scene->addRect(0, 0, SCENE_WIDTH, SCENE_HEIGHT, QPen(Qt::black));
 }
+
 
 void MainWindow::generateMaze()
 {
@@ -73,7 +84,7 @@ void MainWindow::generateMaze()
 
             if (inBounds(ny, nx) && maze[ny][nx] == 1) {
                 // Carve path
-                maze[ny][nx] = 0;
+                maze[ny][nx] = (rand() % 100 < 25) ? 2 : 0;
                 maze[cy + dir.y() / 2][cx + dir.x() / 2] = 0;
                 st.push(QPoint(nx, ny));
                 moved = true;
@@ -111,7 +122,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     QPen gridPen(Qt::lightGray);
     gridPen.setWidth(0);
-    gridStep = 20;
+    gridStep = 40;
     SCENE_WIDTH = scene->width();
     SCENE_HEIGHT = scene->height();
     offsetX = SCENE_WIDTH % gridStep / 2;
@@ -148,25 +159,25 @@ void MainWindow::keyReleaseEvent(QKeyEvent *event)
     switch (event->key()) {
     case Qt::Key_Left:
     case Qt::Key_A:
-        if (newCol > 0 && maze[newRow][newCol - 1] == 0)
+        if (newCol > 0 && maze[newRow][newCol - 1] != 1)
             pos.setX(pos.x() - 1);
         break;
 
     case Qt::Key_Right:
     case Qt::Key_D:
-        if (newCol < COLS - 1 && maze[newRow][newCol + 1] == 0)
+        if (newCol < COLS - 1 && maze[newRow][newCol + 1] != 1)
             pos.setX(pos.x() + 1);
         break;
 
     case Qt::Key_Up:
     case Qt::Key_W:
-        if (newRow > 0 && maze[newRow - 1][newCol] == 0)
+        if (newRow > 0 && maze[newRow - 1][newCol] != 1)
             pos.setY(pos.y() - 1);
         break;
 
     case Qt::Key_Down:
     case Qt::Key_S:
-        if (newRow < ROWS - 1 && maze[newRow + 1][newCol] == 0)
+        if (newRow < ROWS - 1 && maze[newRow + 1][newCol] != 1)
             pos.setY(pos.y() + 1);
         break;
 
@@ -177,6 +188,19 @@ void MainWindow::keyReleaseEvent(QKeyEvent *event)
 
     // Update block visual position
     setPlayerPos();
+    if (maze[pos.y()][pos.x()] == 2) {
+        maze[pos.y()][pos.x()] = 0;
+        QPair<int,int> key = {pos.y(), pos.x()};
+        if (coinItems.contains(key)) {
+            scene->removeItem(coinItems[key]);
+            delete coinItems[key];
+            coinItems.remove(key);
+        }
+        coinsCollected++;
+        ui->coinsCollected->setText("Coins Collected: " + QString::number(coinsCollected));
+        qDebug() << "Coins:" << coinsCollected;
+    }
+
     if(pos.x() == COLS-2 && pos.y() == ROWS-2) {
         qDebug()<<"Reached End";
         on_regenMaze_clicked();

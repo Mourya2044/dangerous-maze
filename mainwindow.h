@@ -36,6 +36,8 @@ private:
     int blockStep = 5;             // Pixels per timer tick
     QGraphicsScene *scene;
     QVector<QVector<int>> maze;
+    QMap<QPair<int, int>, QGraphicsRectItem*> coinItems;
+    int coinsCollected = 0;
     QPointF pos;
     int gridStep;
     int blockSize;

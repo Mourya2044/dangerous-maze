@@ -36,7 +36,7 @@
      </size>
     </property>
     <property name="currentIndex">
-     <number>0</number>
+     <number>1</number>
     </property>
     <widget class="QWidget" name="page">
      <widget class="QLabel" name="label">
@@ -117,6 +117,19 @@
       </property>
       <property name="text">
        <string>Regenerate Maze</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="coinsCollected">
+      <property name="geometry">
+       <rect>
+        <x>280</x>
+        <y>30</y>
+        <width>121</width>
+        <height>20</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Coins Collected: 0</string>
       </property>
      </widget>
     </widget>
