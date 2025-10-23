@@ -47,6 +47,40 @@ private:
     int ROWS;
     int offsetX = 0;
     int offsetY = 0;
+
+    // game state
+    enum Direction { DirNone = -1, DirLeft = 0, DirRight = 1, DirUp = 2, DirDown = 3 };
+
+    QTimer *gameTimer;
+    int tickMs = 140;             // movement tick (adjust for speed)
+    Direction currentDir;         // direction pacman currently moving
+    Direction desiredDir;         // buffered direction from input
+
+    int score = 0;
+    int lives = 3;
+
+    // ghosts
+    struct Ghost {
+        QPoint pos;                      // grid coords
+        Direction dir;
+        QGraphicsPixmapItem *sprite;     // or QGraphicsRectItem for prototype
+        QColor color;                    // for prototype
+    };
+    QVector<Ghost> ghosts;
+
+    // helper functions
+    void initGame();
+    void regenMage();
+    void spawnGhosts();
+    void moveEntities();                 // tick handler: move player + ghosts
+    void movePlayerTick();
+    void moveGhostsTick();
+    bool tryChangeDirection(QPoint gridPos, Direction from, Direction to);
+    bool isWall(int row, int col);
+    QPoint nextCell(const QPoint &pos, Direction dir);
+    int dx(Direction d);
+    int dy(Direction d);
+
 };
 
 #endif // MAINWINDOW_H

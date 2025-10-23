@@ -7,104 +7,6 @@
 #include <QDebug>
 #include <cstdlib>
 #include <ctime>
-#include <stack>
-#include <algorithm>
-#include <random>
-
-void MainWindow::drawMaze()
-{
-    coinItems.clear();
-
-    for (int i = 0; i < ROWS; ++i) {
-        for (int j = 0; j < COLS; ++j) {
-            int x = j * gridStep + offsetX;
-            int y = i * gridStep + offsetY;
-
-            if (maze[i][j] == 1) {
-                scene->addRect(x, y, gridStep, gridStep, QPen(Qt::gray), QBrush(Qt::darkGray));
-            }
-            else if (maze[i][j] == 2) {
-                // coin
-                QGraphicsRectItem *coin = scene->addRect(x + gridStep/4, y + gridStep/4, gridStep/2, gridStep/2,
-                                                         QPen(Qt::yellow), QBrush(Qt::yellow));
-                coinItems[{i, j}] = coin;
-            }
-            else {
-                scene->addRect(x, y, gridStep, gridStep, QPen(Qt::lightGray));
-            }
-        }
-    }
-
-    // Start and end markers
-    scene->addRect(offsetX + 1 * gridStep, offsetY + 1 * gridStep, gridStep, gridStep, QPen(Qt::green), QBrush(Qt::green));
-    scene->addRect(offsetX + (COLS - 2) * gridStep, offsetY + (ROWS - 2) * gridStep, gridStep, gridStep, QPen(Qt::blue), QBrush(Qt::blue));
-    scene->addRect(0, 0, SCENE_WIDTH, SCENE_HEIGHT, QPen(Qt::black));
-}
-
-
-void MainWindow::generateMaze()
-{
-    // Initialize all as walls
-    maze = QVector<QVector<int>>(ROWS, QVector<int>(COLS, 1));
-
-    // Utility lambda for bounds check
-    auto inBounds = [&](int r, int c) {
-        return (r > 0 && c > 0 && r < ROWS - 1 && c < COLS - 1);
-    };
-
-    // Movement directions (Up, Down, Left, Right)
-    QVector<QPoint> directions = {
-        {0, -2}, {0, 2}, {-2, 0}, {2, 0}
-    };
-
-    // Stack for backtracking
-    std::stack<QPoint> st;
-
-    // Start point (must be odd indices)
-    int startRow = 1;
-    int startCol = 1;
-    maze[startRow][startCol] = 0;
-    st.push(QPoint(startCol, startRow));
-
-    std::random_device rd;
-    std::mt19937 gen(rd());
-
-    while (!st.empty()) {
-        QPoint current = st.top();
-        int cx = current.x();
-        int cy = current.y();
-
-        // Shuffle directions for randomness
-        std::shuffle(directions.begin(), directions.end(), gen);
-
-        bool moved = false;
-        for (const QPoint &dir : directions) {
-            int nx = cx + dir.x();
-            int ny = cy + dir.y();
-
-            if (inBounds(ny, nx) && maze[ny][nx] == 1) {
-                // Carve path
-                maze[ny][nx] = (rand() % 100 < 25) ? 2 : 0;
-                maze[cy + dir.y() / 2][cx + dir.x() / 2] = 0;
-                st.push(QPoint(nx, ny));
-                moved = true;
-                break;
-            }
-        }
-
-        if (!moved)
-            st.pop(); // Backtrack
-    }
-
-    // Ensure start and end are clear
-    maze[1][1] = 0;
-    maze[ROWS - 2][COLS - 2] = 0;
-}
-
-
-void MainWindow::setPlayerPos() {
-    block->setRect(offsetX + pos.x() * gridStep, offsetY + pos.y() * gridStep, blockSize, blockSize);
-}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -122,7 +24,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     QPen gridPen(Qt::lightGray);
     gridPen.setWidth(0);
-    gridStep = 40;
+    gridStep = 20;
     SCENE_WIDTH = scene->width();
     SCENE_HEIGHT = scene->height();
     offsetX = SCENE_WIDTH % gridStep / 2;
@@ -144,6 +46,12 @@ MainWindow::MainWindow(QWidget *parent)
     // setPlayerPos();
     block->setFlag(QGraphicsItem::ItemIsFocusable, true);
     block->setFocus();
+    initGame();
+
+    // Timer
+    gameTimer = new QTimer(this);
+    connect(gameTimer, &QTimer::timeout, this, &MainWindow::moveEntities);
+    gameTimer->start(tickMs);
 }
 
 MainWindow::~MainWindow()
@@ -151,60 +59,29 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::keyReleaseEvent(QKeyEvent *event)
-{
-    int newRow = pos.y();
-    int newCol = pos.x();
-
+void MainWindow::keyReleaseEvent(QKeyEvent *event) {
+    Direction d = DirNone;
     switch (event->key()) {
-    case Qt::Key_Left:
-    case Qt::Key_A:
-        if (newCol > 0 && maze[newRow][newCol - 1] != 1)
-            pos.setX(pos.x() - 1);
-        break;
-
-    case Qt::Key_Right:
-    case Qt::Key_D:
-        if (newCol < COLS - 1 && maze[newRow][newCol + 1] != 1)
-            pos.setX(pos.x() + 1);
-        break;
-
-    case Qt::Key_Up:
-    case Qt::Key_W:
-        if (newRow > 0 && maze[newRow - 1][newCol] != 1)
-            pos.setY(pos.y() - 1);
-        break;
-
-    case Qt::Key_Down:
-    case Qt::Key_S:
-        if (newRow < ROWS - 1 && maze[newRow + 1][newCol] != 1)
-            pos.setY(pos.y() + 1);
-        break;
-
-    default:
-        QMainWindow::keyReleaseEvent(event);
-        return;
+    case Qt::Key_Left: case Qt::Key_A: d = DirLeft; break;
+    case Qt::Key_Right: case Qt::Key_D: d = DirRight; break;
+    case Qt::Key_Up: case Qt::Key_W: d = DirUp; break;
+    case Qt::Key_Down: case Qt::Key_S: d = DirDown; break;
+    default: QMainWindow::keyPressEvent(event); return;
     }
+    desiredDir = d;
+}
 
-    // Update block visual position
+void MainWindow::regenMage() {
+    pos = QPointF(1, 1);
+    scene->clear();
+    block = scene->addRect(offsetX + pos.x()*gridStep, offsetY + pos.y()*gridStep, blockSize, blockSize, QPen(Qt::NoPen), QBrush(Qt::red));
+    // setPlayerPos();
+    block->setFlag(QGraphicsItem::ItemIsFocusable, true);
+    block->setFocus();
     setPlayerPos();
-    if (maze[pos.y()][pos.x()] == 2) {
-        maze[pos.y()][pos.x()] = 0;
-        QPair<int,int> key = {pos.y(), pos.x()};
-        if (coinItems.contains(key)) {
-            scene->removeItem(coinItems[key]);
-            delete coinItems[key];
-            coinItems.remove(key);
-        }
-        coinsCollected++;
-        ui->coinsCollected->setText("Coins Collected: " + QString::number(coinsCollected));
-        qDebug() << "Coins:" << coinsCollected;
-    }
-
-    if(pos.x() == COLS-2 && pos.y() == ROWS-2) {
-        qDebug()<<"Reached End";
-        on_regenMaze_clicked();
-    }
+    generateMaze();
+    drawMaze();
+    initGame();
 }
 
 
@@ -220,13 +97,7 @@ void MainWindow::on_backButton_clicked() {
 }
 
 void MainWindow::on_regenMaze_clicked() {
-    pos = QPointF(1, 1);
-    scene->clear();
-    block = scene->addRect(offsetX + pos.x()*gridStep, offsetY + pos.y()*gridStep, blockSize, blockSize, QPen(Qt::NoPen), QBrush(Qt::red));
-    // setPlayerPos();
-    block->setFlag(QGraphicsItem::ItemIsFocusable, true);
-    block->setFocus();
-    setPlayerPos();
-    generateMaze();
-    drawMaze();
+    regenMage();
 }
+
+
