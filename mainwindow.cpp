@@ -1,103 +1,111 @@
 #include "mainwindow.h"
-#include "ui_mainwindow.h"
-#include <QGraphicsScene>
-#include <QPen>
-#include <QBrush>
-#include <QKeyEvent>
-#include <QDebug>
-#include <cstdlib>
-#include <ctime>
+#include <QVBoxLayout>
+#include <QGraphicsProxyWidget>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
 {
-    ui->setupUi(this);
+    // 1. Create the main view
+    view = new QGraphicsView(this);
+    view->setRenderHint(QPainter::Antialiasing);
+    view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    view->setFixedSize(SCENE_WIDTH + 2, SCENE_HEIGHT + 2); // +2 for border
 
-    // --- Create scene ---
-    scene = new QGraphicsScene(this);
-    scene->setSceneRect(0, 0, 760, 460);
-    ui->graphicsView->setScene(scene);
-    ui->graphicsView->setRenderHint(QPainter::Antialiasing);
+    // 2. Create the scenes
+    mainMenuScene = new MainMenuScene(0, 0, SCENE_WIDTH, SCENE_HEIGHT, this);
+    gameScene = new GameScene(0, 0, SCENE_WIDTH, SCENE_HEIGHT, this);
 
-    // --- Draw grid ---
+    // 3. Create UI elements
+    levelLabel = new QLabel("Level: 1");
+    levelLabel->setAttribute(Qt::WA_TranslucentBackground);
+    levelLabel->setStyleSheet("color: white; font-weight: bold;");
 
-    QPen gridPen(Qt::lightGray);
-    gridPen.setWidth(0);
-    gridStep = 20;
-    SCENE_WIDTH = scene->width();
-    SCENE_HEIGHT = scene->height();
-    offsetX = SCENE_WIDTH % gridStep / 2;
-    offsetY = SCENE_HEIGHT % gridStep / 2;
+    scoreLabel = new QLabel("Coins: 0");
+    scoreLabel->setAttribute(Qt::WA_TranslucentBackground);
+    scoreLabel->setStyleSheet("color: white; font-weight: bold;");
 
-    COLS = SCENE_WIDTH / gridStep;
-    ROWS = SCENE_HEIGHT / gridStep;
-    generateMaze();
-    drawMaze();
+    livesLabel = new QLabel("Lives: 3");
+    livesLabel->setAttribute(Qt::WA_TranslucentBackground);
+    livesLabel->setStyleSheet("color: white; font-weight: bold;");
 
-    // --- Border ---
-    scene->addRect(0, 0, SCENE_WIDTH, SCENE_HEIGHT, QPen(Qt::black));
+    totalScoreLabel = new QLabel("Total: 0");
+    totalScoreLabel->setAttribute(Qt::WA_TranslucentBackground);
+    totalScoreLabel->setStyleSheet("color: white; font-weight: bold;");
 
-    // --- Movable block ---
-    blockSize = gridStep;
-    pos = QPointF(1, 1);
+    // 4. Add UI to the GameScene
+    QGraphicsProxyWidget *levelProxy = gameScene->addWidget(levelLabel);
+    QGraphicsProxyWidget *scoreProxy = gameScene->addWidget(scoreLabel);
+    QGraphicsProxyWidget *livesProxy = gameScene->addWidget(livesLabel);
+    QGraphicsProxyWidget *totalScoreProxy = gameScene->addWidget(totalScoreLabel);
 
-    block = scene->addRect(offsetX + pos.x()*gridStep, offsetY + pos.y()*gridStep, blockSize, blockSize, QPen(Qt::NoPen), QBrush(Qt::red));
-    // setPlayerPos();
-    block->setFlag(QGraphicsItem::ItemIsFocusable, true);
-    block->setFocus();
-    initGame();
+    // Arrange UI
+    levelProxy->setPos(10, 5);
+    scoreProxy->setPos(10, 25);
+    livesProxy->setPos(SCENE_WIDTH - 80, 5);
+    totalScoreProxy->setPos(SCENE_WIDTH - 80, 25);
 
-    // Timer
-    gameTimer = new QTimer(this);
-    connect(gameTimer, &QTimer::timeout, this, &MainWindow::moveEntities);
-    gameTimer->start(tickMs);
+    // --- THIS IS THE BUG FIX ---
+    // Set a high Z-value to ensure UI is drawn on top of the maze
+    levelProxy->setZValue(100);
+    scoreProxy->setZValue(100);
+    livesProxy->setZValue(100);
+    totalScoreProxy->setZValue(100);
+    // --- END FIX ---
+
+    // 5. Set up the central widget and layout
+    QWidget *centralWidget = new QWidget(this);
+    QVBoxLayout *layout = new QVBoxLayout(centralWidget);
+    layout->addWidget(view);
+    setCentralWidget(centralWidget);
+
+    // 6. Connect signals
+    connect(mainMenuScene, &MainMenuScene::startGameClicked, this, &MainWindow::startGame);
+    connect(gameScene, &GameScene::scoreChanged, this, &MainWindow::updateScore);
+    connect(gameScene, &GameScene::livesChanged, this, &MainWindow::updateLives);
+    connect(gameScene, &GameScene::gameOver, this, &MainWindow::showMainMenu);
+    // --- NEW CONNECTION ---
+    connect(gameScene, &GameScene::levelChanged, this, &MainWindow::updateLevel);
+
+    // 7. Start with the main menu
+    showMainMenu();
+
+    // Set fixed window size
+    setFixedSize(centralWidget->sizeHint());
+    setWindowTitle("Mage Game");
 }
 
 MainWindow::~MainWindow()
 {
-    delete ui;
 }
 
-void MainWindow::keyReleaseEvent(QKeyEvent *event) {
-    Direction d = DirNone;
-    switch (event->key()) {
-    case Qt::Key_Left: case Qt::Key_A: d = DirLeft; break;
-    case Qt::Key_Right: case Qt::Key_D: d = DirRight; break;
-    case Qt::Key_Up: case Qt::Key_W: d = DirUp; break;
-    case Qt::Key_Down: case Qt::Key_S: d = DirDown; break;
-    default: QMainWindow::keyPressEvent(event); return;
-    }
-    desiredDir = d;
+void MainWindow::showMainMenu()
+{
+    view->setScene(mainMenuScene);
+    mainMenuScene->setFocus();
 }
 
-void MainWindow::regenMage() {
-    pos = QPointF(1, 1);
-    scene->clear();
-    block = scene->addRect(offsetX + pos.x()*gridStep, offsetY + pos.y()*gridStep, blockSize, blockSize, QPen(Qt::NoPen), QBrush(Qt::red));
-    // setPlayerPos();
-    block->setFlag(QGraphicsItem::ItemIsFocusable, true);
-    block->setFocus();
-    setPlayerPos();
-    generateMaze();
-    drawMaze();
-    initGame();
+void MainWindow::startGame()
+{
+    gameScene->loadLevel(1); // Start level 1
+    view->setScene(gameScene);
+    gameScene->setFocus();
 }
 
-
-// --- Page navigation ---
-void MainWindow::on_nextButton_clicked() {
-    ui->stackedWidget->setCurrentIndex(1);
-    pos = QPointF(1, 1);
-    setPlayerPos();
+// --- UPDATED SLOT ---
+void MainWindow::updateScore(int levelScore, int totalScore)
+{
+    scoreLabel->setText("Coins: " + QString::number(levelScore));
+    totalScoreLabel->setText("Total: " + QString::number(totalScore));
 }
 
-void MainWindow::on_backButton_clicked() {
-    ui->stackedWidget->setCurrentIndex(0);
+void MainWindow::updateLives(int lives)
+{
+    livesLabel->setText("Lives: " + QString::number(lives));
 }
 
-void MainWindow::on_regenMaze_clicked() {
-    regenMage();
+// --- NEW SLOT ---
+void MainWindow::updateLevel(int level)
+{
+    levelLabel->setText("Level: " + QString::number(level));
 }
-
-

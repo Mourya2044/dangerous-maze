@@ -1,0 +1,10 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+<qresource prefix="/">
+    <file>fonts/pixel-font.ttf</file>
+    <file>sprites/coin.png</file>
+    <file>sprites/ghost.png</file>
+    <file>sprites/player.png</file>
+    <file>sprites/wall.png</file>
+</qresource>
+</RCC>
